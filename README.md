@@ -7,6 +7,7 @@ A background service for managing kt-connect connections. This tool allows you t
 - **Background Service**: Run kt-connect as a background process that persists across terminal sessions
 - **Profile Management**: Store and manage multiple connection configurations
 - **Easy Installation**: Download and install ktctl directly from the command line
+- **Environment Switching**: One-command switch between kubeconfig contexts with auto cleanup and reconnect
 - **Namespace Switching**: Easily connect to different namespaces
 - **Status Monitoring**: View connection status and logs in real-time
 - **Auto Cleanup**: Automatic cleanup of kt-connect resources on disconnect
@@ -133,6 +134,16 @@ ktcs disconnect
 | `ktcs logs` | View connection logs |
 | `ktcs logs -f` | Follow logs in real-time |
 | `ktcs clean` | Clean up kt-connect resources |
+| `ktcs clean -f` | Force cleanup all kt-connect processes |
+
+### Environment Switching
+
+| Command | Description |
+|---------|-------------|
+| `ktcs switch -l` | List available kubeconfig contexts |
+| `ktcs switch <context>` | Switch context and reconnect (auto cleanup) |
+| `ktcs switch <context> -p <profile>` | Switch with specific profile |
+| `ktcs switch <context> -n <namespace>` | Switch with namespace override |
 
 ### Configuration
 
@@ -171,13 +182,16 @@ ktcs profile add prod \
 ### Switching between environments
 
 ```bash
-# Connect to dev
-ktcs connect -p dev
+# List available kubeconfig contexts
+sudo ktcs switch -l
 
-# Check status
-ktcs status
+# One-command switch: cleanup -> switch context -> reconnect
+sudo ktcs switch my-other-context
 
-# Disconnect and switch to staging
+# Switch with specific profile
+sudo ktcs switch my-other-context -p staging
+
+# Or manually: disconnect and switch to staging
 ktcs disconnect
 ktcs connect -p staging
 ```
@@ -225,7 +239,17 @@ ktcs connect -p my-cluster
 
 #### Switching clusters (reconnect)
 
-To switch to a different cluster, you must disconnect first and then reconnect:
+Use the `switch` command for one-step environment switching:
+
+```bash
+# Recommended: One-command switch (auto cleanup -> switch context -> reconnect)
+sudo ktcs switch <context-name>
+
+# With profile and namespace
+sudo ktcs switch <context-name> -p myprofile -n dev
+```
+
+Or manually disconnect and reconnect:
 
 ```bash
 # Disconnect from current cluster
@@ -239,7 +263,7 @@ ktcs connect
 ktcs connect -p other-cluster
 ```
 
-**Important:** You cannot switch clusters while connected. Always run `ktcs disconnect` first.
+**Note:** The `switch` command handles orphaned processes that may remain when kubeconfig is changed without proper disconnect.
 
 ## Notes
 
