@@ -35,6 +35,7 @@ export interface InstallOptions {
   version?: string;
   installPath?: string;
   force?: boolean;
+  mirror?: boolean;
 }
 
 export interface ConnectOptions {

@@ -10,6 +10,9 @@ import { InstallOptions } from './types';
 const GITHUB_API_URL = 'https://api.github.com/repos/alibaba/kt-connect/releases/latest';
 const DOWNLOAD_BASE_URL = 'https://github.com/alibaba/kt-connect/releases/download';
 
+// China mirror (if available)
+const MIRROR_BASE_URL = 'https://ghproxy.com/https://github.com/alibaba/kt-connect/releases/download';
+
 interface GithubRelease {
   tag_name: string;
   assets: Array<{
@@ -45,32 +48,69 @@ function getArch(): string {
 }
 
 export async function getLatestVersion(): Promise<string> {
-  const response = await fetch(GITHUB_API_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch latest version: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(GITHUB_API_URL, {
+      signal: controller.signal as any,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch latest version: ${response.statusText}`);
+    }
+    const data = (await response.json()) as GithubRelease;
+    return data.tag_name;
+  } finally {
+    clearTimeout(timeout);
   }
-  const data = (await response.json()) as GithubRelease;
-  return data.tag_name;
 }
 
-export function getDownloadUrl(version: string): string {
+export function getDownloadUrl(version: string, useMirror: boolean = false): string {
   const platform = getPlatform();
   const arch = getArch();
   const extension = platform === 'Windows' ? 'zip' : 'tar.gz';
-  // Format: ktctl_<version>_<Platform>_<arch>.tar.gz
-  // e.g., ktctl_0.3.7_Linux_amd64.tar.gz
   const versionNum = version.startsWith('v') ? version.slice(1) : version;
-  return `${DOWNLOAD_BASE_URL}/${version}/ktctl_${versionNum}_${platform}_${arch}.${extension}`;
+  const baseUrl = useMirror ? MIRROR_BASE_URL : DOWNLOAD_BASE_URL;
+  return `${baseUrl}/${version}/ktctl_${versionNum}_${platform}_${arch}.${extension}`;
 }
 
-export async function downloadFile(url: string, destPath: string): Promise<void> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download: ${response.statusText}`);
-  }
+export async function downloadFile(
+  url: string,
+  destPath: string,
+  onProgress?: (percent: number, downloaded: number, total: number) => void
+): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout
 
-  const buffer = await response.buffer();
-  fs.writeFileSync(destPath, buffer);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal as any,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
+    }
+
+    const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
+    let downloadedSize = 0;
+
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of response.body as any) {
+      chunks.push(chunk);
+      downloadedSize += chunk.length;
+
+      if (onProgress && totalSize > 0) {
+        const percent = Math.round((downloadedSize / totalSize) * 100);
+        onProgress(percent, downloadedSize, totalSize);
+      }
+    }
+
+    const buffer = Buffer.concat(chunks);
+    fs.writeFileSync(destPath, buffer);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function install(options: InstallOptions = {}): Promise<string> {
@@ -88,13 +128,29 @@ export async function install(options: InstallOptions = {}): Promise<string> {
     }
   }
 
+  const useMirror = options.mirror || false;
+  const downloadUrl = getDownloadUrl(version, useMirror);
+
   console.log(`Downloading ktctl ${version}...`);
-  const downloadUrl = getDownloadUrl(version);
+  console.log(`URL: ${downloadUrl}`);
+  if (!useMirror) {
+    console.log(`(If slow, try: ktcs install --mirror)`);
+  }
+
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktctl-'));
   const archivePath = path.join(tempDir, 'ktctl.tar.gz');
 
   try {
-    await downloadFile(downloadUrl, archivePath);
+    let lastPercent = -1;
+    await downloadFile(downloadUrl, archivePath, (percent, downloaded, total) => {
+      if (percent !== lastPercent && percent % 10 === 0) {
+        const downloadedMB = (downloaded / 1024 / 1024).toFixed(1);
+        const totalMB = (total / 1024 / 1024).toFixed(1);
+        console.log(`  Progress: ${percent}% (${downloadedMB}/${totalMB} MB)`);
+        lastPercent = percent;
+      }
+    });
+
     console.log('Download complete. Extracting...');
 
     // Extract the archive
