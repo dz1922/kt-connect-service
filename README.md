@@ -13,19 +13,10 @@ A background service for managing kt-connect connections. This tool allows you t
 
 ## Installation
 
-### Method 1: Install from GitHub (recommended)
-
 ```bash
-npm install -g git+https://github.com/dz1922/kt-connect-service.git
-```
-
-### Method 2: Install from source
-
-```bash
-git clone git@github.com:dz1922/kt-connect-service.git
+git clone https://github.com/dz1922/kt-connect-service.git
 cd kt-connect-service
-npm install --registry https://registry.npmjs.org
-npm run build
+npm install
 npm link
 ```
 
