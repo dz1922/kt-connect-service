@@ -256,22 +256,12 @@ ktcs connect -p other-cluster
 - The service runs ktctl in the background; logs are available via `ktcs logs`
 - Use `ktcs clean` if you experience issues after an unclean shutdown
 
-### Sudo Password Issue
+### Running with sudo
 
-Since ktctl runs in the background, it cannot prompt for sudo password. Use one of these solutions:
+Since ktctl needs sudo privileges, run connect with sudo:
 
-**Option 1: Cache sudo credentials first (recommended)**
 ```bash
-sudo -v && ktcs connect
-```
-
-**Option 2: Configure passwordless sudo for ktctl**
-```bash
-# Edit sudoers file
-sudo visudo
-
-# Add this line (replace YOUR_USERNAME with your actual username)
-YOUR_USERNAME ALL=(ALL) NOPASSWD: /usr/local/bin/ktctl
+sudo ktcs connect
 ```
 
 ## Acknowledgments
