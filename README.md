@@ -15,7 +15,7 @@ A background service for managing kt-connect connections. This tool allows you t
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone git@github.com:dz1922/kt-connect-service.git
 cd kt-connect-service
 
 # Install dependencies
