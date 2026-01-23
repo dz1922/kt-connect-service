@@ -1,3 +1,8 @@
+// Default values
+export const DEFAULT_IMAGE = 'registry.cn-hangzhou.aliyuncs.com/rdc-incubator/kt-connect-shadow';
+export const DEFAULT_NAMESPACE = 'default';
+export const DEFAULT_DESCRIPTION = 'default';
+
 export interface ConnectionProfile {
   name: string;
   image: string;

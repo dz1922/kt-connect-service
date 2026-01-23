@@ -43,18 +43,23 @@ ktcs install -v v0.3.7
 ### 2. Add a Connection Profile
 
 ```bash
-# Add a profile with required image
-ktcs profile add dev \
-  -i 912513746846.dkr.ecr.ca-central-1.amazonaws.com/blueprint-devops/kt-connect-shadow \
-  -n dev \
-  -d "Development environment"
+# Add a profile with all defaults (uses official kt-connect image, namespace: default)
+ktcs profile add myprofile
 
-# Add another profile for staging
+# Add a profile with custom namespace
+ktcs profile add dev -n dev
+
+# Add a profile with custom image (override default)
 ktcs profile add staging \
-  -i 912513746846.dkr.ecr.ca-central-1.amazonaws.com/blueprint-devops/kt-connect-shadow \
+  -i your-custom-registry.com/kt-connect-shadow \
   -n staging \
   -d "Staging environment"
 ```
+
+**Default values:**
+- `-i` (image): `registry.cn-hangzhou.aliyuncs.com/rdc-incubator/kt-connect-shadow`
+- `-n` (namespace): `default`
+- `-d` (description): `default`
 
 ### 3. Connect to the Cluster
 
@@ -109,7 +114,7 @@ ktcs disconnect
 
 | Command | Description |
 |---------|-------------|
-| `ktcs profile add <name> -i <image>` | Add a new profile |
+| `ktcs profile add <name>` | Add a new profile (all options have defaults) |
 | `ktcs profile list` | List all profiles |
 | `ktcs profile show <name>` | Show profile details |
 | `ktcs profile use <name>` | Set active profile |
@@ -118,10 +123,10 @@ ktcs disconnect
 
 #### Profile Options
 
-- `-i, --image <url>` - Shadow image URL (required for add)
-- `-n, --namespace <ns>` - Default namespace
+- `-i, --image <url>` - Shadow image URL (default: official kt-connect image)
+- `-n, --namespace <ns>` - Default namespace (default: `default`)
 - `-k, --kubeconfig <path>` - Path to kubeconfig file
-- `-d, --description <desc>` - Profile description
+- `-d, --description <desc>` - Profile description (default: `default`)
 - `-a, --args <args...>` - Extra arguments for ktctl
 
 ### Connection Management
@@ -157,21 +162,15 @@ Logs are stored in: `~/.kt-connect-service/logs/`
 ### Setting up for multiple environments
 
 ```bash
-# Add development profile
-ktcs profile add dev \
-  -i 912513746846.dkr.ecr.ca-central-1.amazonaws.com/blueprint-devops/kt-connect-shadow \
-  -n dev \
-  -d "Development cluster"
+# Add development profile (uses default image)
+ktcs profile add dev -n dev -d "Development cluster"
 
 # Add staging profile
-ktcs profile add staging \
-  -i 912513746846.dkr.ecr.ca-central-1.amazonaws.com/blueprint-devops/kt-connect-shadow \
-  -n staging \
-  -d "Staging cluster"
+ktcs profile add staging -n staging -d "Staging cluster"
 
-# Add production profile with specific kubeconfig
+# Add production profile with specific kubeconfig and custom image
 ktcs profile add prod \
-  -i 912513746846.dkr.ecr.ca-central-1.amazonaws.com/blueprint-devops/kt-connect-shadow \
+  -i your-registry.com/kt-connect-shadow \
   -n production \
   -k ~/.kube/prod-config \
   -d "Production cluster"

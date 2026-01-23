@@ -16,7 +16,7 @@ import {
 } from './config';
 import { install, getLatestVersion, getInstalledVersion, findKtctl, isKtctlInstalled } from './installer';
 import { connect, disconnect, getStatus, getLogs, cleanup } from './connection';
-import { ConnectionProfile } from './types';
+import { ConnectionProfile, DEFAULT_IMAGE, DEFAULT_NAMESPACE, DEFAULT_DESCRIPTION } from './types';
 
 const program = new Command();
 
@@ -83,10 +83,10 @@ const profileCmd = program.command('profile').description('Manage connection pro
 profileCmd
   .command('add <name>')
   .description('Add a new connection profile')
-  .requiredOption('-i, --image <image>', 'Shadow image URL (required)')
-  .option('-n, --namespace <namespace>', 'Default namespace')
+  .option('-i, --image <image>', `Shadow image URL (default: ${DEFAULT_IMAGE})`)
+  .option('-n, --namespace <namespace>', `Default namespace (default: ${DEFAULT_NAMESPACE})`)
   .option('-k, --kubeconfig <path>', 'Path to kubeconfig file')
-  .option('-d, --description <description>', 'Profile description')
+  .option('-d, --description <description>', `Profile description (default: ${DEFAULT_DESCRIPTION})`)
   .option('-a, --args <args...>', 'Extra arguments to pass to ktctl')
   .action((name, options) => {
     const existing = getProfile(name);
@@ -97,10 +97,10 @@ profileCmd
 
     const profile: ConnectionProfile = {
       name,
-      image: options.image,
-      namespace: options.namespace,
+      image: options.image || DEFAULT_IMAGE,
+      namespace: options.namespace || DEFAULT_NAMESPACE,
       kubeconfig: options.kubeconfig,
-      description: options.description,
+      description: options.description || DEFAULT_DESCRIPTION,
       extraArgs: options.args,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -108,6 +108,8 @@ profileCmd
 
     addProfile(profile);
     console.log(chalk.green(`Profile "${name}" added successfully.`));
+    console.log(chalk.gray(`  Image:     ${profile.image}`));
+    console.log(chalk.gray(`  Namespace: ${profile.namespace}`));
 
     // Set as active if no active profile
     if (!getActiveProfile()) {
