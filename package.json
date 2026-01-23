@@ -1,6 +1,6 @@
 {
   "name": "kt-connect-service",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Background service for managing kt-connect connections",
   "main": "dist/index.js",
   "bin": {
