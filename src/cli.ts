@@ -15,7 +15,7 @@ import {
   getConfig,
 } from './config';
 import { install, getLatestVersion, getInstalledVersion, findKtctl, isKtctlInstalled } from './installer';
-import { connect, disconnect, getStatus, getLogs, cleanup } from './connection';
+import { connect, disconnect, getStatus, getLogs, cleanup, forceCleanup, switchContext, getContexts, getCurrentContext } from './connection';
 import { ConnectionProfile, DEFAULT_IMAGE, DEFAULT_NAMESPACE, DEFAULT_DESCRIPTION } from './types';
 
 const packageJson = require('../package.json');
@@ -331,9 +331,67 @@ program
 program
   .command('clean')
   .description('Clean up kt-connect resources')
-  .action(async () => {
+  .option('-f, --force', 'Force cleanup - kill all kt-connect processes')
+  .action(async (options) => {
     try {
-      await cleanup();
+      if (options.force) {
+        await forceCleanup();
+      } else {
+        await cleanup();
+      }
+    } catch (error) {
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  });
+
+// Switch command - switch kubeconfig context and reconnect
+program
+  .command('switch [context]')
+  .description('Switch kubeconfig context and reconnect kt-connect')
+  .option('-p, --profile <name>', 'Profile to use for reconnection')
+  .option('-n, --namespace <namespace>', 'Override namespace')
+  .option('-l, --list', 'List available contexts')
+  .action(async (context, options) => {
+    try {
+      // List contexts
+      if (options.list) {
+        const contexts = getContexts();
+        const current = getCurrentContext();
+        console.log(chalk.cyan('Available contexts:'));
+        contexts.forEach((ctx) => {
+          if (ctx === current) {
+            console.log(chalk.green(`  * ${ctx} (current)`));
+          } else {
+            console.log(`    ${ctx}`);
+          }
+        });
+        return;
+      }
+
+      if (!context) {
+        console.error(chalk.red('Please specify a context or use -l to list available contexts.'));
+        process.exit(1);
+      }
+
+      const spinner = ora('Switching environment...').start();
+
+      // Step 1: Force cleanup
+      spinner.text = 'Force cleaning kt-connect...';
+      await forceCleanup();
+
+      // Step 2: Switch context
+      spinner.text = `Switching to context: ${context}...`;
+      switchContext(context);
+
+      // Step 3: Reconnect
+      spinner.text = 'Reconnecting kt-connect...';
+      await connect({
+        profile: options.profile,
+        namespace: options.namespace,
+      });
+
+      spinner.succeed(chalk.green(`Switched to context "${context}" and reconnected successfully.`));
     } catch (error) {
       console.error(chalk.red((error as Error).message));
       process.exit(1);

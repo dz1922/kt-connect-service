@@ -37,6 +37,10 @@ exports.getStatus = getStatus;
 exports.connect = connect;
 exports.disconnect = disconnect;
 exports.cleanup = cleanup;
+exports.forceCleanup = forceCleanup;
+exports.switchContext = switchContext;
+exports.getContexts = getContexts;
+exports.getCurrentContext = getCurrentContext;
 exports.getLogs = getLogs;
 exports.switchNamespace = switchNamespace;
 const fs = __importStar(require("fs"));
@@ -231,6 +235,76 @@ async function cleanup() {
         else {
             console.log('Cleanup command finished.');
         }
+    }
+}
+// Force cleanup - kills ALL kt-connect related processes and cleans up
+async function forceCleanup() {
+    console.log('Force cleaning kt-connect environment...');
+    // 1. Kill all ktctl processes (including orphaned ones)
+    console.log('Killing all ktctl processes...');
+    try {
+        // Find and kill all ktctl processes
+        (0, child_process_1.execSync)('pkill -9 -f "ktctl" 2>/dev/null || true', { stdio: 'pipe' });
+    }
+    catch {
+        // Ignore errors - process might not exist
+    }
+    // 2. Kill any kt-connect related processes
+    try {
+        (0, child_process_1.execSync)('pkill -9 -f "kt-connect" 2>/dev/null || true', { stdio: 'pipe' });
+    }
+    catch {
+        // Ignore errors
+    }
+    // Wait for processes to die
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // 3. Clear our PID file
+    clearProcessInfo();
+    // 4. Run ktctl clean to remove k8s resources
+    const ktctlPath = (0, installer_1.findKtctl)();
+    if (ktctlPath) {
+        console.log('Cleaning up Kubernetes resources...');
+        try {
+            (0, child_process_1.execSync)(`${ktctlPath} clean`, {
+                stdio: 'pipe',
+                timeout: 15000,
+            });
+        }
+        catch {
+            // Ignore cleanup errors
+        }
+    }
+    console.log('Force cleanup complete.');
+}
+// Switch kubeconfig context
+function switchContext(context) {
+    console.log(`Switching to context: ${context}`);
+    try {
+        (0, child_process_1.execSync)(`kubectl config use-context ${context}`, { stdio: 'inherit' });
+        console.log(`Switched to context: ${context}`);
+    }
+    catch (error) {
+        throw new Error(`Failed to switch context: ${error.message}`);
+    }
+}
+// Get available kubeconfig contexts
+function getContexts() {
+    try {
+        const output = (0, child_process_1.execSync)('kubectl config get-contexts -o name', { encoding: 'utf-8' });
+        return output.trim().split('\n').filter(Boolean);
+    }
+    catch {
+        return [];
+    }
+}
+// Get current kubeconfig context
+function getCurrentContext() {
+    try {
+        const output = (0, child_process_1.execSync)('kubectl config current-context', { encoding: 'utf-8' });
+        return output.trim();
+    }
+    catch {
+        return null;
     }
 }
 function getLogs(lines = 50) {

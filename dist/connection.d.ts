@@ -3,6 +3,10 @@ export declare function getStatus(): ServiceStatus;
 export declare function connect(options?: ConnectOptions): Promise<void>;
 export declare function disconnect(): Promise<void>;
 export declare function cleanup(): Promise<void>;
+export declare function forceCleanup(): Promise<void>;
+export declare function switchContext(context: string): void;
+export declare function getContexts(): string[];
+export declare function getCurrentContext(): string | null;
 export declare function getLogs(lines?: number): string;
 export declare function switchNamespace(namespace: string): void;
 //# sourceMappingURL=connection.d.ts.map
