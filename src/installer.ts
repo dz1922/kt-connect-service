@@ -39,9 +39,11 @@ function getArch(): string {
   const arch = os.arch();
   switch (arch) {
     case 'x64':
-      return 'amd64';
+      return 'x86_64';
     case 'arm64':
-      return 'arm64';
+      return 'arm_64';
+    case 'ia32':
+      return 'i386';
     default:
       throw new Error(`Unsupported architecture: ${arch}`);
   }
