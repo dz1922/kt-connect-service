@@ -4,8 +4,24 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { Config, ConnectionProfile } from './types';
 
-const DEFAULT_LOG_DIR = path.join(os.homedir(), '.kt-connect-service', 'logs');
-const DEFAULT_PID_FILE = path.join(os.homedir(), '.kt-connect-service', 'ktctl.pid');
+// Use original user's home when running with sudo, otherwise use current user's home
+function getRealHomeDir(): string {
+  // Check if running with sudo and get the original user's home
+  const sudoUser = process.env.SUDO_USER;
+  if (sudoUser) {
+    // On macOS, home is /Users/username; on Linux, it's /home/username
+    if (process.platform === 'darwin') {
+      return `/Users/${sudoUser}`;
+    } else {
+      return `/home/${sudoUser}`;
+    }
+  }
+  return os.homedir();
+}
+
+const REAL_HOME = getRealHomeDir();
+const DEFAULT_LOG_DIR = path.join(REAL_HOME, '.kt-connect-service', 'logs');
+const DEFAULT_PID_FILE = path.join(REAL_HOME, '.kt-connect-service', 'ktctl.pid');
 
 const config = new Conf<Config>({
   projectName: 'kt-connect-service',
