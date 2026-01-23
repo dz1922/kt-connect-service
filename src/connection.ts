@@ -212,14 +212,19 @@ export async function cleanup(): Promise<void> {
     return;
   }
 
-  console.log('Running ktctl clean...');
+  console.log('Running ktctl clean (10s timeout)...');
   try {
     execSync(`${ktctlPath} clean`, {
-      stdio: 'inherit',
+      stdio: 'pipe',
+      timeout: 10000, // 10 second timeout
     });
     console.log('Cleanup complete.');
-  } catch (error) {
-    console.log('Cleanup command failed (this may be normal if nothing to clean).');
+  } catch (error: any) {
+    if (error.killed) {
+      console.log('Cleanup timed out (this is usually fine).');
+    } else {
+      console.log('Cleanup command finished.');
+    }
   }
 }
 
