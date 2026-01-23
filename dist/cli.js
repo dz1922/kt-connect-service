@@ -11,11 +11,12 @@ const config_1 = require("./config");
 const installer_1 = require("./installer");
 const connection_1 = require("./connection");
 const types_1 = require("./types");
+const packageJson = require('../package.json');
 const program = new commander_1.Command();
 program
     .name('ktcs')
     .description('kt-connect service - Background service for managing kt-connect connections')
-    .version('1.0.0');
+    .version(packageJson.version);
 // Install command
 program
     .command('install')

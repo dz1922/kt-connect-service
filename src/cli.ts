@@ -18,12 +18,13 @@ import { install, getLatestVersion, getInstalledVersion, findKtctl, isKtctlInsta
 import { connect, disconnect, getStatus, getLogs, cleanup } from './connection';
 import { ConnectionProfile, DEFAULT_IMAGE, DEFAULT_NAMESPACE, DEFAULT_DESCRIPTION } from './types';
 
+const packageJson = require('../package.json');
 const program = new Command();
 
 program
   .name('ktcs')
   .description('kt-connect service - Background service for managing kt-connect connections')
-  .version('1.0.0');
+  .version(packageJson.version);
 
 // Install command
 program
