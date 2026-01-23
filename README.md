@@ -209,6 +209,10 @@ nc -vz your-rds-endpoint.rds.amazonaws.com 5432
 - The service runs ktctl in the background; logs are available via `ktcs logs`
 - Use `ktcs clean` if you experience issues after an unclean shutdown
 
+## Acknowledgments
+
+This project is built on top of [kt-connect](https://github.com/alibaba/kt-connect) by Alibaba. Thanks to the kt-connect team for creating such a powerful tool for Kubernetes local development.
+
 ## License
 
-MIT
+GPL-3.0 (following [kt-connect](https://github.com/alibaba/kt-connect/blob/master/LICENSE) license)
