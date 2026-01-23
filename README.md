@@ -202,6 +202,53 @@ nc -vz <service-name>.<namespace>.svc.cluster.local <port>
 nc -vz your-rds-endpoint.rds.amazonaws.com 5432
 ```
 
+### Kubeconfig Management
+
+kt-connect uses the currently active kubeconfig to connect to the cluster. You can manage kubeconfig in several ways:
+
+#### Method 1: Use default kubeconfig (~/.kube/config)
+
+```bash
+# kt-connect will use ~/.kube/config by default
+ktcs connect
+```
+
+#### Method 2: Set KUBECONFIG environment variable
+
+```bash
+# Switch kubeconfig before connecting
+export KUBECONFIG=~/.kube/my-cluster-config
+ktcs connect
+```
+
+#### Method 3: Specify kubeconfig in profile
+
+```bash
+# Create profile with specific kubeconfig
+ktcs profile add my-cluster -k ~/.kube/my-cluster-config
+
+# Connect using the profile
+ktcs connect -p my-cluster
+```
+
+#### Switching clusters (reconnect)
+
+To switch to a different cluster, you must disconnect first and then reconnect:
+
+```bash
+# Disconnect from current cluster
+ktcs disconnect
+
+# Option 1: Switch kubeconfig and reconnect
+export KUBECONFIG=~/.kube/other-cluster-config
+ktcs connect
+
+# Option 2: Use a different profile with its own kubeconfig
+ktcs connect -p other-cluster
+```
+
+**Important:** You cannot switch clusters while connected. Always run `ktcs disconnect` first.
+
 ## Notes
 
 - kt-connect requires `sudo` privileges to modify routing tables
