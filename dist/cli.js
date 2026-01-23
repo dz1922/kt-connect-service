@@ -6,6 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const chalk_1 = __importDefault(require("chalk"));
+const ora_1 = __importDefault(require("ora"));
 const cli_table3_1 = __importDefault(require("cli-table3"));
 const config_1 = require("./config");
 const installer_1 = require("./installer");
@@ -300,9 +301,63 @@ program
 program
     .command('clean')
     .description('Clean up kt-connect resources')
-    .action(async () => {
+    .option('-f, --force', 'Force cleanup - kill all kt-connect processes')
+    .action(async (options) => {
     try {
-        await (0, connection_1.cleanup)();
+        if (options.force) {
+            await (0, connection_1.forceCleanup)();
+        }
+        else {
+            await (0, connection_1.cleanup)();
+        }
+    }
+    catch (error) {
+        console.error(chalk_1.default.red(error.message));
+        process.exit(1);
+    }
+});
+// Switch command - switch kubeconfig context and reconnect
+program
+    .command('switch [context]')
+    .description('Switch kubeconfig context and reconnect kt-connect')
+    .option('-p, --profile <name>', 'Profile to use for reconnection')
+    .option('-n, --namespace <namespace>', 'Override namespace')
+    .option('-l, --list', 'List available contexts')
+    .action(async (context, options) => {
+    try {
+        // List contexts
+        if (options.list) {
+            const contexts = (0, connection_1.getContexts)();
+            const current = (0, connection_1.getCurrentContext)();
+            console.log(chalk_1.default.cyan('Available contexts:'));
+            contexts.forEach((ctx) => {
+                if (ctx === current) {
+                    console.log(chalk_1.default.green(`  * ${ctx} (current)`));
+                }
+                else {
+                    console.log(`    ${ctx}`);
+                }
+            });
+            return;
+        }
+        if (!context) {
+            console.error(chalk_1.default.red('Please specify a context or use -l to list available contexts.'));
+            process.exit(1);
+        }
+        const spinner = (0, ora_1.default)('Switching environment...').start();
+        // Step 1: Force cleanup
+        spinner.text = 'Force cleaning kt-connect...';
+        await (0, connection_1.forceCleanup)();
+        // Step 2: Switch context
+        spinner.text = `Switching to context: ${context}...`;
+        (0, connection_1.switchContext)(context);
+        // Step 3: Reconnect
+        spinner.text = 'Reconnecting kt-connect...';
+        await (0, connection_1.connect)({
+            profile: options.profile,
+            namespace: options.namespace,
+        });
+        spinner.succeed(chalk_1.default.green(`Switched to context "${context}" and reconnected successfully.`));
     }
     catch (error) {
         console.error(chalk_1.default.red(error.message));

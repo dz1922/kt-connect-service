@@ -239,6 +239,80 @@ export async function cleanup(): Promise<void> {
   }
 }
 
+// Force cleanup - kills ALL kt-connect related processes and cleans up
+export async function forceCleanup(): Promise<void> {
+  console.log('Force cleaning kt-connect environment...');
+
+  // 1. Kill all ktctl processes (including orphaned ones)
+  console.log('Killing all ktctl processes...');
+  try {
+    // Find and kill all ktctl processes
+    execSync('pkill -9 -f "ktctl" 2>/dev/null || true', { stdio: 'pipe' });
+  } catch {
+    // Ignore errors - process might not exist
+  }
+
+  // 2. Kill any kt-connect related processes
+  try {
+    execSync('pkill -9 -f "kt-connect" 2>/dev/null || true', { stdio: 'pipe' });
+  } catch {
+    // Ignore errors
+  }
+
+  // Wait for processes to die
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // 3. Clear our PID file
+  clearProcessInfo();
+
+  // 4. Run ktctl clean to remove k8s resources
+  const ktctlPath = findKtctl();
+  if (ktctlPath) {
+    console.log('Cleaning up Kubernetes resources...');
+    try {
+      execSync(`${ktctlPath} clean`, {
+        stdio: 'pipe',
+        timeout: 15000,
+      });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
+  console.log('Force cleanup complete.');
+}
+
+// Switch kubeconfig context
+export function switchContext(context: string): void {
+  console.log(`Switching to context: ${context}`);
+  try {
+    execSync(`kubectl config use-context ${context}`, { stdio: 'inherit' });
+    console.log(`Switched to context: ${context}`);
+  } catch (error: any) {
+    throw new Error(`Failed to switch context: ${error.message}`);
+  }
+}
+
+// Get available kubeconfig contexts
+export function getContexts(): string[] {
+  try {
+    const output = execSync('kubectl config get-contexts -o name', { encoding: 'utf-8' });
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// Get current kubeconfig context
+export function getCurrentContext(): string | null {
+  try {
+    const output = execSync('kubectl config current-context', { encoding: 'utf-8' });
+    return output.trim();
+  } catch {
+    return null;
+  }
+}
+
 export function getLogs(lines: number = 50): string {
   const processInfo = getProcessInfo();
 
