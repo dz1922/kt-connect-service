@@ -18,8 +18,8 @@ A background service for managing kt-connect connections. This tool allows you t
 git clone git@github.com:dz1922/kt-connect-service.git
 cd kt-connect-service
 
-# Install dependencies
-npm install
+# Install dependencies (use official registry if mirror has issues)
+npm install --registry https://registry.npmjs.org
 
 # Build the project
 npm run build

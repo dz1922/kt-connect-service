@@ -26,7 +26,7 @@
     "conf": "^10.2.0",
     "node-fetch": "^2.7.0",
     "ora": "^5.4.1",
-    "tar": "6.1.11"
+    "tar": "^6.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
