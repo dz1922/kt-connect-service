@@ -126,15 +126,20 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const logFile = path.join(logDir, `ktctl-${timestamp}.log`);
 
+  // Check if running as root
+  const isRoot = process.getuid && process.getuid() === 0;
+  if (!isRoot) {
+    throw new Error('kt-connect requires root privileges. Please run with sudo:\n  sudo ktcs connect');
+  }
+
   console.log(`Starting kt-connect with profile: ${profileName}`);
-  console.log(`Command: sudo ${ktctlPath} ${args.join(' ')}`);
+  console.log(`Command: ${ktctlPath} ${args.join(' ')}`);
   console.log(`Log file: ${logFile}`);
 
-  // Start ktctl in background with sudo
+  // Start ktctl in background (already running as root)
   const logStream = fs.openSync(logFile, 'a');
 
-  // We need to use sudo for ktctl connect
-  const child = spawn('sudo', [ktctlPath, ...args], {
+  const child = spawn(ktctlPath, args, {
     detached: true,
     stdio: ['ignore', logStream, logStream],
   });
@@ -175,11 +180,17 @@ export async function disconnect(): Promise<void> {
     return;
   }
 
+  // Check if running as root (needed to kill the process)
+  const isRoot = process.getuid && process.getuid() === 0;
+  if (!isRoot) {
+    throw new Error('Disconnect requires root privileges. Please run with sudo:\n  sudo ktcs disconnect');
+  }
+
   console.log(`Stopping kt-connect (PID: ${status.pid})...`);
 
   try {
-    // Send SIGTERM to the process (need sudo since ktctl runs with sudo)
-    execSync(`sudo kill ${status.pid}`, { stdio: 'pipe' });
+    // Send SIGTERM to the process
+    process.kill(status.pid!, 'SIGTERM');
 
     // Wait for process to terminate
     let retries = 10;
@@ -191,7 +202,7 @@ export async function disconnect(): Promise<void> {
     // Force kill if still running
     if (isProcessRunning(status.pid!)) {
       console.log('Process did not terminate gracefully, force killing...');
-      execSync(`sudo kill -9 ${status.pid}`, { stdio: 'pipe' });
+      process.kill(status.pid!, 'SIGKILL');
     }
   } catch (error) {
     // Process might already be dead
@@ -212,14 +223,19 @@ export async function cleanup(): Promise<void> {
     return;
   }
 
-  console.log('Running ktctl clean...');
+  console.log('Running ktctl clean (10s timeout)...');
   try {
     execSync(`${ktctlPath} clean`, {
-      stdio: 'inherit',
+      stdio: 'pipe',
+      timeout: 10000, // 10 second timeout
     });
     console.log('Cleanup complete.');
-  } catch (error) {
-    console.log('Cleanup command failed (this may be normal if nothing to clean).');
+  } catch (error: any) {
+    if (error.killed) {
+      console.log('Cleanup timed out (this is usually fine).');
+    } else {
+      console.log('Cleanup command finished.');
+    }
   }
 }
 

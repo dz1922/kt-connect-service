@@ -6,19 +6,29 @@
   "bin": {
     "ktcs": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dz1922/kt-connect-service.git"
+  },
+  "homepage": "https://github.com/dz1922/kt-connect-service#readme",
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "install-global": "npm run build && npm link"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "kt-connect",
     "kubernetes",
     "vpn",
-    "background-service"
+    "background-service",
+    "cli"
   ],
-  "license": "MIT",
+  "license": "GPL-3.0",
   "dependencies": {
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.3",
@@ -26,7 +36,7 @@
     "conf": "^10.2.0",
     "node-fetch": "^2.7.0",
     "ora": "^5.4.1",
-    "tar": "^7.5.6"
+    "tar": "^6.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

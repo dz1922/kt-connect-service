@@ -32,15 +32,15 @@ program
   .option('-v, --version <version>', 'Specific version to install')
   .option('-p, --path <path>', 'Installation path (default: /usr/local/bin)')
   .option('-f, --force', 'Force reinstall even if already installed')
+  .option('-m, --mirror', 'Use GitHub mirror for faster download in China')
   .action(async (options) => {
-    const spinner = ora('Installing ktctl...').start();
     try {
       const installedPath = await install({
         version: options.version,
         installPath: options.path,
         force: options.force,
+        mirror: options.mirror,
       });
-      spinner.succeed(`ktctl installed at ${installedPath}`);
 
       // Show version
       const version = getInstalledVersion(installedPath);
@@ -48,8 +48,7 @@ program
         console.log(chalk.green(`Installed version: ${version}`));
       }
     } catch (error) {
-      spinner.fail('Installation failed');
-      console.error(chalk.red((error as Error).message));
+      console.error(chalk.red('Installation failed: ' + (error as Error).message));
       process.exit(1);
     }
   });

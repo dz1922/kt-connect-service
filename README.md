@@ -13,18 +13,19 @@ A background service for managing kt-connect connections. This tool allows you t
 
 ## Installation
 
+### Method 1: Install from GitHub (recommended)
+
 ```bash
-# Clone the repository
-git clone <repository-url>
+npm install -g git+https://github.com/dz1922/kt-connect-service.git
+```
+
+### Method 2: Install from source
+
+```bash
+git clone git@github.com:dz1922/kt-connect-service.git
 cd kt-connect-service
-
-# Install dependencies
-npm install
-
-# Build the project
+npm install --registry https://registry.npmjs.org
 npm run build
-
-# Link globally (optional, for using 'ktcs' command)
 npm link
 ```
 
@@ -202,6 +203,53 @@ nc -vz <service-name>.<namespace>.svc.cluster.local <port>
 nc -vz your-rds-endpoint.rds.amazonaws.com 5432
 ```
 
+### Kubeconfig Management
+
+kt-connect uses the currently active kubeconfig to connect to the cluster. You can manage kubeconfig in several ways:
+
+#### Method 1: Use default kubeconfig (~/.kube/config)
+
+```bash
+# kt-connect will use ~/.kube/config by default
+ktcs connect
+```
+
+#### Method 2: Set KUBECONFIG environment variable
+
+```bash
+# Switch kubeconfig before connecting
+export KUBECONFIG=~/.kube/my-cluster-config
+ktcs connect
+```
+
+#### Method 3: Specify kubeconfig in profile
+
+```bash
+# Create profile with specific kubeconfig
+ktcs profile add my-cluster -k ~/.kube/my-cluster-config
+
+# Connect using the profile
+ktcs connect -p my-cluster
+```
+
+#### Switching clusters (reconnect)
+
+To switch to a different cluster, you must disconnect first and then reconnect:
+
+```bash
+# Disconnect from current cluster
+ktcs disconnect
+
+# Option 1: Switch kubeconfig and reconnect
+export KUBECONFIG=~/.kube/other-cluster-config
+ktcs connect
+
+# Option 2: Use a different profile with its own kubeconfig
+ktcs connect -p other-cluster
+```
+
+**Important:** You cannot switch clusters while connected. Always run `ktcs disconnect` first.
+
 ## Notes
 
 - kt-connect requires `sudo` privileges to modify routing tables
@@ -209,6 +257,18 @@ nc -vz your-rds-endpoint.rds.amazonaws.com 5432
 - The service runs ktctl in the background; logs are available via `ktcs logs`
 - Use `ktcs clean` if you experience issues after an unclean shutdown
 
+### Running with sudo
+
+Since ktctl needs sudo privileges, run connect with sudo:
+
+```bash
+sudo ktcs connect
+```
+
+## Acknowledgments
+
+This project is built on top of [kt-connect](https://github.com/alibaba/kt-connect) by Alibaba. Thanks to the kt-connect team for creating such a powerful tool for Kubernetes local development.
+
 ## License
 
-MIT
+GPL-3.0 (following [kt-connect](https://github.com/alibaba/kt-connect/blob/master/LICENSE) license)
