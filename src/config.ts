@@ -20,11 +20,13 @@ function getRealHomeDir(): string {
 }
 
 const REAL_HOME = getRealHomeDir();
-const DEFAULT_LOG_DIR = path.join(REAL_HOME, '.kt-connect-service', 'logs');
-const DEFAULT_PID_FILE = path.join(REAL_HOME, '.kt-connect-service', 'ktctl.pid');
+const CONFIG_DIR = path.join(REAL_HOME, '.kt-connect-service');
+const DEFAULT_LOG_DIR = path.join(CONFIG_DIR, 'logs');
+const DEFAULT_PID_FILE = path.join(CONFIG_DIR, 'ktctl.pid');
 
 const config = new Conf<Config>({
   projectName: 'kt-connect-service',
+  cwd: CONFIG_DIR, // Use fixed config directory regardless of sudo
   defaults: {
     profiles: {},
     logDir: DEFAULT_LOG_DIR,
