@@ -11,13 +11,23 @@ A background service for managing kt-connect connections. This tool allows you t
 - **Namespace Switching**: Easily connect to different namespaces
 - **Status Monitoring**: View connection status and logs in real-time
 - **Auto Cleanup**: Automatic cleanup of kt-connect resources on disconnect
+- **Auto Reconnect**: Opt-in watcher that auto-reconnects on connection drop with exponential backoff
+- **Health Probing**: Verifies tunnel readiness instead of relying on fixed timeouts
+- **Switch Rollback**: Automatically rolls back context on failed environment switch
 
 ## Installation
+
+```bash
+npm install -g kt-connect-service
+```
+
+### From source
 
 ```bash
 git clone https://github.com/dz1922/kt-connect-service.git
 cd kt-connect-service
 npm install
+npm run build
 npm link
 ```
 
@@ -135,6 +145,9 @@ ktcs disconnect
 | `ktcs logs -f` | Follow logs in real-time |
 | `ktcs clean` | Clean up kt-connect resources |
 | `ktcs clean -f` | Force cleanup all kt-connect processes |
+| `ktcs watch` | Connect with auto-reconnect on drop (foreground) |
+| `ktcs watch --interval <ms>` | Set health check interval (default: 10000) |
+| `ktcs watch --max-failures <n>` | Stop after N consecutive failures (default: 5) |
 
 ### Environment Switching
 
@@ -150,6 +163,12 @@ ktcs disconnect
 | Command | Description |
 |---------|-------------|
 | `ktcs config` | Show current configuration |
+
+### Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--verbose` | Show internal steps and commands |
 
 ## Configuration Storage
 
