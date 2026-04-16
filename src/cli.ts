@@ -305,12 +305,13 @@ program
     console.log();
 
     if (status.running) {
-      console.log(`  Status:      ${chalk.green('Connected')}`);
+      const isOrphan = !status.profile;
+      console.log(`  Status:      ${chalk.green('Connected')}${isOrphan ? chalk.yellow(' (orphan — not started by ktcs)') : ''}`);
       console.log(`  PID:         ${status.pid}`);
-      console.log(`  Profile:     ${status.profile}`);
-      console.log(`  Namespace:   ${status.namespace || '(default)'}`);
-      console.log(`  Started:     ${status.startedAt}`);
-      console.log(`  Log file:    ${status.logFile}`);
+      if (status.profile) console.log(`  Profile:     ${status.profile}`);
+      if (status.namespace) console.log(`  Namespace:   ${status.namespace}`);
+      if (status.startedAt) console.log(`  Started:     ${status.startedAt}`);
+      if (status.logFile) console.log(`  Log file:    ${status.logFile}`);
     } else {
       console.log(`  Status:      ${chalk.yellow('Disconnected')}`);
     }

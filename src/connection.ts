@@ -64,7 +64,8 @@ function safeReadTail(file: string, lines: number): string {
 async function waitForReadiness(pid: number, logFile: string): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < READINESS_TIMEOUT_MS) {
-    if (!isProcessRunning(pid)) {
+    // If both the spawn PID and any forked ktctl are gone, startup truly failed
+    if (!isProcessRunning(pid) && !findKtctlConnectPid()) {
       const tail = safeReadTail(logFile, 50);
       throw new Error(`ktctl exited during startup.\n\n${tail}`);
     }
@@ -92,29 +93,58 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
+/**
+ * Find any running `ktctl connect` process via pgrep.
+ * Needed because ktctl forks/re-execs at startup, so the spawn-time PID
+ * may exit while the actual worker keeps running under a different PID.
+ */
+function findKtctlConnectPid(): number | null {
+  const result = spawnSync('pgrep', ['-f', 'ktctl connect'], { encoding: 'utf-8' });
+  if (result.status !== 0) return null;
+  const pids = (result.stdout ?? '')
+    .trim()
+    .split('\n')
+    .map((p) => parseInt(p, 10))
+    .filter((p) => !isNaN(p) && p !== process.pid);
+  return pids.length > 0 ? pids[0] : null;
+}
+
 export function getStatus(): ServiceStatus {
   const processInfo = getProcessInfo();
 
-  if (!processInfo) {
-    return { running: false };
+  if (processInfo && isProcessRunning(processInfo.pid)) {
+    return {
+      running: true,
+      pid: processInfo.pid,
+      profile: processInfo.profile,
+      namespace: processInfo.namespace,
+      startedAt: processInfo.startedAt,
+      logFile: processInfo.logFile,
+    };
   }
 
-  const running = isProcessRunning(processInfo.pid);
-
-  if (!running) {
-    // Process died, clean up pid file
-    clearProcessInfo();
-    return { running: false };
+  // Saved PID gone — ktctl may have forked. Look for any live ktctl connect process.
+  const livePid = findKtctlConnectPid();
+  if (livePid) {
+    if (processInfo && processInfo.pid !== livePid) {
+      // Reconcile: update the PID file to point at the actual running process
+      saveProcessInfo({ ...processInfo, pid: livePid });
+      return {
+        running: true,
+        pid: livePid,
+        profile: processInfo.profile,
+        namespace: processInfo.namespace,
+        startedAt: processInfo.startedAt,
+        logFile: processInfo.logFile,
+      };
+    }
+    // No saved info but ktctl is running — orphaned process
+    return { running: true, pid: livePid };
   }
 
-  return {
-    running: true,
-    pid: processInfo.pid,
-    profile: processInfo.profile,
-    namespace: processInfo.namespace,
-    startedAt: processInfo.startedAt,
-    logFile: processInfo.logFile,
-  };
+  // Truly not running
+  if (processInfo) clearProcessInfo();
+  return { running: false };
 }
 
 export async function connect(options: ConnectOptions = {}): Promise<void> {
@@ -195,9 +225,13 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
   // Wait for ktctl to signal readiness (or timeout with warning)
   await waitForReadiness(child.pid, logFile);
 
+  // Resolve the actual running ktctl PID (ktctl may fork/re-exec during startup,
+  // so child.pid from spawn is not reliable for long-term tracking).
+  const actualPid = findKtctlConnectPid() ?? child.pid;
+
   // Save process info
   const processInfo: ProcessInfo = {
-    pid: child.pid,
+    pid: actualPid,
     profile: profileName,
     namespace: namespace,
     startedAt: new Date().toISOString(),
@@ -206,7 +240,7 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
   saveProcessInfo(processInfo);
   setActiveProfile(profileName);
 
-  reporter.log('debug', `kt-connect started (PID: ${child.pid})`);
+  reporter.log('debug', `kt-connect started (PID: ${actualPid})`);
 }
 
 export async function disconnect(): Promise<void> {
