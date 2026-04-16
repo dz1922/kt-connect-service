@@ -1,15 +1,22 @@
 {
   "name": "kt-connect-service",
-  "version": "0.0.1",
-  "description": "Background service for managing kt-connect connections",
+  "version": "0.1.0",
+  "description": "CLI tool for managing kt-connect connections with auto-reconnect",
   "main": "dist/index.js",
   "bin": {
     "ktcs": "./dist/cli.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dz1922/kt-connect-service.git"
@@ -18,7 +25,11 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js",
-    "dev": "ts-node src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "kt-connect",
@@ -41,7 +52,10 @@
     "@types/node": "^20.10.0",
     "@types/node-fetch": "^2.6.9",
     "@types/tar": "^6.1.10",
+    "@vitest/coverage-v8": "^2.1.9",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.9"
   }
 }

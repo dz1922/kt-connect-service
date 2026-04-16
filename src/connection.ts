@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn, execSync, ChildProcess } from 'child_process';
+import { spawn, execSync, spawnSync, ChildProcess } from 'child_process';
 import { getProfile, getLogDir, getPidFile, setActiveProfile, getActiveProfile, getKtctlPath } from './config';
 import { findKtctl } from './installer';
 import { ServiceStatus, ConnectionProfile, ConnectOptions } from './types';
+import { reporter } from './reporter';
 
 interface ProcessInfo {
   pid: number;
@@ -37,6 +38,49 @@ function clearProcessInfo(): void {
   if (fs.existsSync(pidFile)) {
     fs.unlinkSync(pidFile);
   }
+}
+
+// Readiness markers ktctl prints when tunnel is established
+const READINESS_MARKERS = [
+  'KT proxy is ready',
+  'Tunnel is ready',
+  'tun device',
+  'Connect to cluster',
+  'Route to',
+  'successful',
+];
+const READINESS_TIMEOUT_MS = 30_000;
+const READINESS_POLL_MS = 500;
+
+function safeReadTail(file: string, lines: number): string {
+  try {
+    const all = fs.readFileSync(file, 'utf-8').split('\n');
+    return all.slice(-lines).join('\n');
+  } catch {
+    return '(log unavailable)';
+  }
+}
+
+async function waitForReadiness(pid: number, logFile: string): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < READINESS_TIMEOUT_MS) {
+    if (!isProcessRunning(pid)) {
+      const tail = safeReadTail(logFile, 50);
+      throw new Error(`ktctl exited during startup.\n\n${tail}`);
+    }
+    if (fs.existsSync(logFile)) {
+      const content = fs.readFileSync(logFile, 'utf-8');
+      if (READINESS_MARKERS.some((m) => content.toLowerCase().includes(m.toLowerCase()))) {
+        return;
+      }
+    }
+    await new Promise((r) => setTimeout(r, READINESS_POLL_MS));
+  }
+  // Timeout — process alive but no readiness signal. Warn but don't fail hard.
+  reporter.log('warn',
+    `ktctl did not signal readiness within ${READINESS_TIMEOUT_MS / 1000}s. ` +
+    `It may still be starting. Check logs: ${logFile}`
+  );
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -132,9 +176,9 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
     throw new Error('kt-connect requires root privileges. Please run with sudo:\n  sudo ktcs connect');
   }
 
-  console.log(`Starting kt-connect with profile: ${profileName}`);
-  console.log(`Command: ${ktctlPath} ${args.join(' ')}`);
-  console.log(`Log file: ${logFile}`);
+  reporter.log('debug', `Starting kt-connect with profile: ${profileName}`);
+  reporter.log('debug', `Command: ${ktctlPath} ${args.join(' ')}`);
+  reporter.log('debug', `Log file: ${logFile}`);
 
   // Start ktctl in background (already running as root)
   const logStream = fs.openSync(logFile, 'a');
@@ -147,18 +191,16 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
   child.unref();
   fs.closeSync(logStream);
 
-  // Wait a moment to check if process started successfully
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Check if process is still running
-  if (!isProcessRunning(child.pid!)) {
-    const logContent = fs.readFileSync(logFile, 'utf-8');
-    throw new Error(`kt-connect failed to start. Check log file: ${logFile}\n\nLog output:\n${logContent}`);
+  if (!child.pid) {
+    throw new Error('Failed to start ktctl process');
   }
+
+  // Wait for ktctl to signal readiness (or timeout with warning)
+  await waitForReadiness(child.pid, logFile);
 
   // Save process info
   const processInfo: ProcessInfo = {
-    pid: child.pid!,
+    pid: child.pid,
     profile: profileName,
     namespace: namespace,
     startedAt: new Date().toISOString(),
@@ -167,14 +209,14 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
   saveProcessInfo(processInfo);
   setActiveProfile(profileName);
 
-  console.log(`kt-connect started successfully (PID: ${child.pid})`);
+  reporter.log('debug', `kt-connect started (PID: ${child.pid})`);
 }
 
 export async function disconnect(): Promise<void> {
   const status = getStatus();
 
   if (!status.running) {
-    console.log('kt-connect is not running.');
+    reporter.log('info', 'kt-connect is not running.');
     // Still run cleanup
     await cleanup();
     return;
@@ -186,7 +228,7 @@ export async function disconnect(): Promise<void> {
     throw new Error('Disconnect requires root privileges. Please run with sudo:\n  sudo ktcs disconnect');
   }
 
-  console.log(`Stopping kt-connect (PID: ${status.pid})...`);
+  reporter.log('debug', `Stopping kt-connect (PID: ${status.pid})`);
 
   try {
     // Send SIGTERM to the process
@@ -201,16 +243,16 @@ export async function disconnect(): Promise<void> {
 
     // Force kill if still running
     if (isProcessRunning(status.pid!)) {
-      console.log('Process did not terminate gracefully, force killing...');
+      reporter.log('debug', 'Process did not terminate gracefully, force killing');
       process.kill(status.pid!, 'SIGKILL');
     }
   } catch (error) {
     // Process might already be dead
-    console.log('Process may have already terminated.');
+    reporter.log('debug', 'Process may have already terminated');
   }
 
   clearProcessInfo();
-  console.log('kt-connect stopped.');
+  reporter.log('debug', 'kt-connect stopped');
 
   // Run cleanup
   await cleanup();
@@ -219,32 +261,32 @@ export async function disconnect(): Promise<void> {
 export async function cleanup(): Promise<void> {
   const ktctlPath = findKtctl();
   if (!ktctlPath) {
-    console.log('ktctl not found, skipping cleanup.');
+    reporter.log('debug', 'ktctl not found, skipping cleanup');
     return;
   }
 
-  console.log('Running ktctl clean (10s timeout)...');
+  reporter.log('debug', 'Running ktctl clean (10s timeout)');
   try {
     execSync(`${ktctlPath} clean`, {
       stdio: 'pipe',
       timeout: 10000, // 10 second timeout
     });
-    console.log('Cleanup complete.');
+    reporter.log('debug', 'Cleanup complete');
   } catch (error: any) {
     if (error.killed) {
-      console.log('Cleanup timed out (this is usually fine).');
+      reporter.log('debug', 'Cleanup timed out (this is usually fine)');
     } else {
-      console.log('Cleanup command finished.');
+      reporter.log('debug', 'Cleanup command finished');
     }
   }
 }
 
 // Force cleanup - kills ALL kt-connect related processes and cleans up
 export async function forceCleanup(): Promise<void> {
-  console.log('Force cleaning kt-connect environment...');
+  reporter.log('debug', 'Force cleaning kt-connect environment');
 
   // 1. Kill all ktctl processes (including orphaned ones)
-  console.log('Killing all ktctl processes...');
+  reporter.log('debug', 'Killing all ktctl processes');
   try {
     // Find and kill all ktctl processes
     execSync('pkill -9 -f "ktctl" 2>/dev/null || true', { stdio: 'pipe' });
@@ -268,7 +310,7 @@ export async function forceCleanup(): Promise<void> {
   // 4. Run ktctl clean to remove k8s resources
   const ktctlPath = findKtctl();
   if (ktctlPath) {
-    console.log('Cleaning up Kubernetes resources...');
+    reporter.log('debug', 'Cleaning up Kubernetes resources');
     try {
       execSync(`${ktctlPath} clean`, {
         stdio: 'pipe',
@@ -279,38 +321,53 @@ export async function forceCleanup(): Promise<void> {
     }
   }
 
-  console.log('Force cleanup complete.');
+  reporter.log('debug', 'Force cleanup complete');
 }
 
 // Switch kubeconfig context
 export function switchContext(context: string): void {
-  console.log(`Switching to context: ${context}`);
-  try {
-    execSync(`kubectl config use-context ${context}`, { stdio: 'inherit' });
-    console.log(`Switched to context: ${context}`);
-  } catch (error: any) {
-    throw new Error(`Failed to switch context: ${error.message}`);
+  reporter.log('debug', `Switching to context: ${context}`);
+  const result = spawnSync('kubectl', ['config', 'use-context', context], { stdio: 'pipe' });
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? Buffer.from('')).toString().trim();
+    throw new Error(stderr || `Failed to switch context (exit ${result.status})`);
   }
 }
 
 // Get available kubeconfig contexts
 export function getContexts(): string[] {
-  try {
-    const output = execSync('kubectl config get-contexts -o name', { encoding: 'utf-8' });
-    return output.trim().split('\n').filter(Boolean);
-  } catch {
-    return [];
-  }
+  const result = spawnSync('kubectl', ['config', 'get-contexts', '-o', 'name'], { encoding: 'utf-8' });
+  if (result.status !== 0) return [];
+  return (result.stdout ?? '').trim().split('\n').filter(Boolean);
 }
 
 // Get current kubeconfig context
 export function getCurrentContext(): string | null {
-  try {
-    const output = execSync('kubectl config current-context', { encoding: 'utf-8' });
-    return output.trim();
-  } catch {
-    return null;
+  const result = spawnSync('kubectl', ['config', 'current-context'], { encoding: 'utf-8' });
+  if (result.status !== 0) return null;
+  return (result.stdout ?? '').trim() || null;
+}
+
+// Switch transaction for rollback support
+export interface SwitchTransaction {
+  previousContext: string | null;
+}
+
+export function beginSwitch(): SwitchTransaction {
+  return {
+    previousContext: getCurrentContext(),
+  };
+}
+
+export async function rollbackSwitch(tx: SwitchTransaction): Promise<void> {
+  if (tx.previousContext) {
+    try {
+      switchContext(tx.previousContext);
+    } catch {
+      // best-effort rollback
+    }
   }
+  await forceCleanup();
 }
 
 export function getLogs(lines: number = 50): string {
@@ -343,6 +400,5 @@ export function switchNamespace(namespace: string): void {
     throw new Error('No active profile. Set one using "ktcs profile use <name>".');
   }
 
-  console.log(`To connect with namespace "${namespace}", run:`);
-  console.log(`  ktcs connect -n ${namespace}`);
+  reporter.log('info', `To connect with namespace "${namespace}", run:\n  ktcs connect -n ${namespace}`);
 }

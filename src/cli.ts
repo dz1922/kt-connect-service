@@ -2,7 +2,6 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
 import Table from 'cli-table3';
 import {
   addProfile,
@@ -15,8 +14,10 @@ import {
   getConfig,
 } from './config';
 import { install, getLatestVersion, getInstalledVersion, findKtctl, isKtctlInstalled } from './installer';
-import { connect, disconnect, getStatus, getLogs, cleanup, forceCleanup, switchContext, getContexts, getCurrentContext } from './connection';
+import { connect, disconnect, getStatus, getLogs, cleanup, forceCleanup, switchContext, getContexts, getCurrentContext, beginSwitch, rollbackSwitch } from './connection';
 import { ConnectionProfile, DEFAULT_IMAGE, DEFAULT_NAMESPACE, DEFAULT_DESCRIPTION } from './types';
+import { reporter } from './reporter';
+import { watch } from './watcher';
 
 const packageJson = require('../package.json');
 const program = new Command();
@@ -24,7 +25,11 @@ const program = new Command();
 program
   .name('ktcs')
   .description('kt-connect service - Background service for managing kt-connect connections')
-  .version(packageJson.version);
+  .version(packageJson.version)
+  .option('--verbose', 'Show internal steps and commands')
+  .hook('preAction', (_thisCommand, actionCommand) => {
+    reporter.setVerbose(!!actionCommand.optsWithGlobals().verbose);
+  });
 
 // Install command
 program
@@ -46,10 +51,10 @@ program
       // Show version
       const version = getInstalledVersion(installedPath);
       if (version) {
-        console.log(chalk.green(`Installed version: ${version}`));
+        reporter.log('success', `Installed version: ${version}`);
       }
     } catch (error) {
-      console.error(chalk.red('Installation failed: ' + (error as Error).message));
+      reporter.failStep('Installation failed: ' + (error as Error).message);
       process.exit(1);
     }
   });
@@ -61,7 +66,7 @@ program
   .action(async () => {
     const ktctlPath = findKtctl();
     if (!ktctlPath) {
-      console.log(chalk.yellow('ktctl is not installed. Run "ktcs install" to install it.'));
+      reporter.log('warn', 'ktctl is not installed. Run "ktcs install" to install it.');
       return;
     }
 
@@ -91,7 +96,7 @@ profileCmd
   .action((name, options) => {
     const existing = getProfile(name);
     if (existing) {
-      console.error(chalk.red(`Profile "${name}" already exists. Use "ktcs profile update" to modify it.`));
+      reporter.failStep(`Profile "${name}" already exists. Use "ktcs profile update" to modify it.`);
       process.exit(1);
     }
 
@@ -107,14 +112,14 @@ profileCmd
     };
 
     addProfile(profile);
-    console.log(chalk.green(`Profile "${name}" added successfully.`));
-    console.log(chalk.gray(`  Image:     ${profile.image}`));
-    console.log(chalk.gray(`  Namespace: ${profile.namespace}`));
+    reporter.log('success', `Profile "${name}" added`);
+    reporter.log('debug', `Image:     ${profile.image}`);
+    reporter.log('debug', `Namespace: ${profile.namespace}`);
 
     // Set as active if no active profile
     if (!getActiveProfile()) {
       setActiveProfile(name);
-      console.log(chalk.blue(`Set "${name}" as the active profile.`));
+      reporter.log('info', `Set "${name}" as the active profile`);
     }
   });
 
@@ -127,7 +132,7 @@ profileCmd
     const activeProfile = getActiveProfile();
 
     if (profiles.length === 0) {
-      console.log(chalk.yellow('No profiles configured. Use "ktcs profile add" to add one.'));
+      reporter.log('warn', 'No profiles configured. Use "ktcs profile add" to add one.');
       return;
     }
 
@@ -156,7 +161,7 @@ profileCmd
   .action((name) => {
     const profile = getProfile(name);
     if (!profile) {
-      console.error(chalk.red(`Profile "${name}" not found.`));
+      reporter.failStep(`Profile "${name}" not found.`);
       process.exit(1);
     }
 
@@ -179,9 +184,9 @@ profileCmd
   .action((name) => {
     const removed = removeProfile(name);
     if (removed) {
-      console.log(chalk.green(`Profile "${name}" removed.`));
+      reporter.log('success', `Profile "${name}" removed`);
     } else {
-      console.error(chalk.red(`Profile "${name}" not found.`));
+      reporter.failStep(`Profile "${name}" not found.`);
       process.exit(1);
     }
   });
@@ -192,12 +197,12 @@ profileCmd
   .action((name) => {
     const profile = getProfile(name);
     if (!profile) {
-      console.error(chalk.red(`Profile "${name}" not found.`));
+      reporter.failStep(`Profile "${name}" not found.`);
       process.exit(1);
     }
 
     setActiveProfile(name);
-    console.log(chalk.green(`Active profile set to "${name}".`));
+    reporter.log('success', `Active profile set to "${name}"`);
   });
 
 profileCmd
@@ -211,7 +216,7 @@ profileCmd
   .action((name, options) => {
     const profile = getProfile(name);
     if (!profile) {
-      console.error(chalk.red(`Profile "${name}" not found.`));
+      reporter.failStep(`Profile "${name}" not found.`);
       process.exit(1);
     }
 
@@ -223,12 +228,12 @@ profileCmd
     if (options.args) updates.extraArgs = options.args;
 
     if (Object.keys(updates).length === 0) {
-      console.log(chalk.yellow('No updates specified.'));
+      reporter.log('warn', 'No updates specified.');
       return;
     }
 
     updateProfile(name, updates);
-    console.log(chalk.green(`Profile "${name}" updated.`));
+    reporter.log('success', `Profile "${name}" updated`);
   });
 
 // Connect command
@@ -239,12 +244,36 @@ program
   .option('-n, --namespace <namespace>', 'Override namespace')
   .action(async (options) => {
     try {
+      reporter.startStep('Connecting to cluster');
       await connect({
         profile: options.profile,
         namespace: options.namespace,
       });
+      reporter.succeedStep('Connected to cluster');
     } catch (error) {
-      console.error(chalk.red((error as Error).message));
+      reporter.failStep((error as Error).message);
+      process.exit(1);
+    }
+  });
+
+// Watch command - connect with auto-reconnect
+program
+  .command('watch')
+  .description('Connect and auto-reconnect on drop (foreground)')
+  .option('-p, --profile <name>', 'Profile to use')
+  .option('-n, --namespace <namespace>', 'Override namespace')
+  .option('--interval <ms>', 'Health check interval in ms', '10000')
+  .option('--max-failures <n>', 'Stop after N consecutive failures', '5')
+  .action(async (options) => {
+    try {
+      await watch({
+        profile: options.profile,
+        namespace: options.namespace,
+        checkIntervalMs: parseInt(options.interval, 10) || 10_000,
+        maxConsecutiveFailures: parseInt(options.maxFailures, 10) || 5,
+      });
+    } catch (error) {
+      reporter.failStep((error as Error).message);
       process.exit(1);
     }
   });
@@ -255,9 +284,11 @@ program
   .description('Disconnect from the cluster')
   .action(async () => {
     try {
+      reporter.startStep('Disconnecting');
       await disconnect();
+      reporter.succeedStep('Disconnected');
     } catch (error) {
-      console.error(chalk.red((error as Error).message));
+      reporter.failStep((error as Error).message);
       process.exit(1);
     }
   });
@@ -307,7 +338,7 @@ program
     if (options.follow) {
       const status = getStatus();
       if (!status.running || !status.logFile) {
-        console.error(chalk.red('No active connection or log file found.'));
+        reporter.failStep('No active connection or log file found.');
         process.exit(1);
       }
 
@@ -334,13 +365,15 @@ program
   .option('-f, --force', 'Force cleanup - kill all kt-connect processes')
   .action(async (options) => {
     try {
+      reporter.startStep('Cleaning up');
       if (options.force) {
         await forceCleanup();
       } else {
         await cleanup();
       }
+      reporter.succeedStep('Cleanup complete');
     } catch (error) {
-      console.error(chalk.red((error as Error).message));
+      reporter.failStep((error as Error).message);
       process.exit(1);
     }
   });
@@ -370,30 +403,41 @@ program
       }
 
       if (!context) {
-        console.error(chalk.red('Please specify a context or use -l to list available contexts.'));
+        reporter.failStep('Please specify a context or use -l to list available contexts.');
         process.exit(1);
       }
 
-      const spinner = ora('Switching environment...').start();
+      const tx = beginSwitch();
+      reporter.startStep('Switching environment');
 
-      // Step 1: Force cleanup
-      spinner.text = 'Force cleaning kt-connect...';
-      await forceCleanup();
+      try {
+        // Step 1: Force cleanup
+        reporter.updateStep('Cleaning up previous connection');
+        await forceCleanup();
 
-      // Step 2: Switch context
-      spinner.text = `Switching to context: ${context}...`;
-      switchContext(context);
+        // Step 2: Switch context
+        reporter.updateStep(`Switching context → ${context}`);
+        switchContext(context);
 
-      // Step 3: Reconnect
-      spinner.text = 'Reconnecting kt-connect...';
-      await connect({
-        profile: options.profile,
-        namespace: options.namespace,
-      });
+        // Step 3: Reconnect
+        reporter.updateStep('Reconnecting kt-connect');
+        await connect({
+          profile: options.profile,
+          namespace: options.namespace,
+        });
 
-      spinner.succeed(chalk.green(`Switched to context "${context}" and reconnected successfully.`));
+        reporter.succeedStep(`Switched to "${context}" and reconnected`);
+      } catch (err) {
+        reporter.failStep(`Switch failed: ${(err as Error).message}`);
+        reporter.startStep('Rolling back to previous state');
+        await rollbackSwitch(tx);
+        reporter.succeedStep(
+          `Rolled back to "${tx.previousContext ?? 'previous'}" (disconnected — run 'ktcs connect' to resume)`
+        );
+        process.exit(1);
+      }
     } catch (error) {
-      console.error(chalk.red((error as Error).message));
+      reporter.failStep((error as Error).message);
       process.exit(1);
     }
   });
