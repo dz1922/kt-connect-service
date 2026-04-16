@@ -33,17 +33,9 @@ npm link
 
 ## Quick Start
 
-### 1. Install ktctl
+ktctl is **automatically downloaded** on first use — no separate install step needed.
 
-```bash
-# Install the latest version of ktctl
-ktcs install
-
-# Or install a specific version
-ktcs install -v v0.3.7
-```
-
-### 2. Add a Connection Profile
+### 1. Add a Connection Profile
 
 ```bash
 # Add a profile with all defaults (uses official kt-connect image, namespace: default)
@@ -64,7 +56,7 @@ ktcs profile add staging \
 - `-n` (namespace): `default`
 - `-d` (description): `default`
 
-### 3. Connect to the Cluster
+### 2. Connect to the Cluster
 
 ```bash
 # Connect using the active profile
@@ -77,13 +69,13 @@ ktcs connect -p dev
 ktcs connect -n my-namespace
 ```
 
-### 4. Check Status
+### 3. Check Status
 
 ```bash
 ktcs status
 ```
 
-### 5. View Logs
+### 4. View Logs
 
 ```bash
 # View recent logs
@@ -96,7 +88,7 @@ ktcs logs -f
 ktcs logs -n 100
 ```
 
-### 6. Disconnect
+### 5. Disconnect
 
 ```bash
 ktcs disconnect
@@ -104,13 +96,15 @@ ktcs disconnect
 
 ## Commands Reference
 
-### Installation Commands
+### ktctl Management
+
+ktctl is auto-downloaded on first use. These commands are for manual control:
 
 | Command | Description |
 |---------|-------------|
-| `ktcs install` | Download and install ktctl |
+| `ktcs install` | Manually download ktctl (auto-done on first use) |
 | `ktcs install -v <version>` | Install a specific version |
-| `ktcs install -f` | Force reinstall |
+| `ktcs install -f` | Force reinstall / upgrade |
 | `ktcs version` | Show installed and latest versions |
 
 ### Profile Management

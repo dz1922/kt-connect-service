@@ -13,7 +13,7 @@ import {
   getActiveProfile,
   getConfig,
 } from './config';
-import { install, getLatestVersion, getInstalledVersion, findKtctl, isKtctlInstalled } from './installer';
+import { install, getLatestVersion, getInstalledVersion, findKtctl, ensureKtctl } from './installer';
 import { connect, disconnect, getStatus, getLogs, cleanup, forceCleanup, switchContext, getContexts, getCurrentContext, beginSwitch, rollbackSwitch } from './connection';
 import { ConnectionProfile, DEFAULT_IMAGE, DEFAULT_NAMESPACE, DEFAULT_DESCRIPTION } from './types';
 import { reporter } from './reporter';
@@ -34,9 +34,9 @@ program
 // Install command
 program
   .command('install')
-  .description('Download and install ktctl')
+  .description('Download or upgrade ktctl (auto-installed on first use)')
   .option('-v, --version <version>', 'Specific version to install')
-  .option('-p, --path <path>', 'Installation path (default: /usr/local/bin)')
+  .option('-p, --path <path>', 'Installation path (default: ~/.kt-connect-service/bin)')
   .option('-f, --force', 'Force reinstall even if already installed')
   .option('-m, --mirror', 'Use GitHub mirror for faster download in China')
   .action(async (options) => {
@@ -66,7 +66,7 @@ program
   .action(async () => {
     const ktctlPath = findKtctl();
     if (!ktctlPath) {
-      reporter.log('warn', 'ktctl is not installed. Run "ktcs install" to install it.');
+      reporter.log('warn', 'ktctl is not installed. It will be downloaded automatically on first connect.');
       return;
     }
 
