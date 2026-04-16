@@ -2,19 +2,13 @@ import Conf from 'conf';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import { Config, ConnectionProfile } from './types';
+import { Config, Defaults, DEFAULT_IMAGE, DEFAULT_NAMESPACE } from './types';
 
-// Use original user's home when running with sudo, otherwise use current user's home
 function getRealHomeDir(): string {
-  // Check if running with sudo and get the original user's home
   const sudoUser = process.env.SUDO_USER;
   if (sudoUser) {
-    // On macOS, home is /Users/username; on Linux, it's /home/username
-    if (process.platform === 'darwin') {
-      return `/Users/${sudoUser}`;
-    } else {
-      return `/home/${sudoUser}`;
-    }
+    if (process.platform === 'darwin') return `/Users/${sudoUser}`;
+    return `/home/${sudoUser}`;
   }
   return os.homedir();
 }
@@ -24,38 +18,65 @@ const CONFIG_DIR = path.join(REAL_HOME, '.kt-connect-service');
 const DEFAULT_LOG_DIR = path.join(CONFIG_DIR, 'logs');
 const DEFAULT_PID_FILE = path.join(CONFIG_DIR, 'ktctl.pid');
 
+const DEFAULTS: Defaults = {
+  image: DEFAULT_IMAGE,
+  namespace: DEFAULT_NAMESPACE,
+};
+
 const config = new Conf<Config>({
   projectName: 'kt-connect-service',
-  cwd: CONFIG_DIR, // Use fixed config directory regardless of sudo
+  cwd: CONFIG_DIR,
   defaults: {
-    profiles: {},
+    defaults: DEFAULTS,
     logDir: DEFAULT_LOG_DIR,
     pidFile: DEFAULT_PID_FILE,
   },
 });
 
-// Ensure directories exist
 function ensureDirectories(): void {
   const logDir = config.get('logDir');
   const pidDir = path.dirname(config.get('pidFile'));
-
-  if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-  }
-  if (!fs.existsSync(pidDir)) {
-    fs.mkdirSync(pidDir, { recursive: true });
-  }
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
 }
 
 ensureDirectories();
+migrateLegacyConfig();
+
+/**
+ * One-time migration: pre-0.2 used `profiles`. If found, copy the active
+ * profile's image into `defaults` (only if user hasn't already customized it),
+ * then strip the legacy keys.
+ */
+function migrateLegacyConfig(): void {
+  const store = config.store as any;
+  if (!store.profiles) return;
+
+  const activeName = store.activeProfile;
+  const activeProfile = activeName && store.profiles[activeName];
+  const currentDefaults = config.get('defaults');
+
+  if (activeProfile && activeProfile.image && currentDefaults.image === DEFAULT_IMAGE) {
+    const migrated: Defaults = {
+      ...currentDefaults,
+      image: activeProfile.image,
+    };
+    if (activeProfile.namespace) migrated.namespace = activeProfile.namespace;
+    if (activeProfile.kubeconfig) migrated.kubeconfig = activeProfile.kubeconfig;
+    if (activeProfile.extraArgs) migrated.extraArgs = activeProfile.extraArgs;
+    config.set('defaults', migrated);
+  }
+
+  (config as any).delete('profiles');
+  (config as any).delete('activeProfile');
+}
 
 export function getConfig(): Config {
   return {
-    profiles: config.get('profiles'),
-    activeProfile: config.get('activeProfile'),
-    ktctlPath: config.get('ktctlPath'),
+    defaults: config.get('defaults'),
     logDir: config.get('logDir'),
     pidFile: config.get('pidFile'),
+    ktctlPath: config.get('ktctlPath'),
   };
 }
 
@@ -75,67 +96,36 @@ export function getPidFile(): string {
   return config.get('pidFile');
 }
 
-// Profile management
-export function addProfile(profile: ConnectionProfile): void {
-  const profiles = config.get('profiles');
-  profiles[profile.name] = {
-    ...profile,
-    createdAt: profile.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  config.set('profiles', profiles);
+// Defaults management — replaces profile system
+const VALID_KEYS = ['image', 'namespace', 'kubeconfig', 'extraArgs'] as const;
+type DefaultKey = (typeof VALID_KEYS)[number];
+
+export function isValidDefaultKey(key: string): key is DefaultKey {
+  return (VALID_KEYS as readonly string[]).includes(key);
 }
 
-export function getProfile(name: string): ConnectionProfile | undefined {
-  const profiles = config.get('profiles');
-  return profiles[name];
+export function getDefaults(): Defaults {
+  return config.get('defaults');
 }
 
-export function getAllProfiles(): ConnectionProfile[] {
-  const profiles = config.get('profiles');
-  return Object.values(profiles);
+export function getDefault<K extends DefaultKey>(key: K): Defaults[K] {
+  return getDefaults()[key];
 }
 
-export function removeProfile(name: string): boolean {
-  const profiles = config.get('profiles');
-  if (profiles[name]) {
-    delete profiles[name];
-    config.set('profiles', profiles);
-
-    // Clear active profile if it was removed
-    if (config.get('activeProfile') === name) {
-      config.delete('activeProfile');
-    }
-    return true;
-  }
-  return false;
+export function setDefault(key: DefaultKey, value: string | string[]): void {
+  const current = getDefaults();
+  const updated: Defaults = { ...current, [key]: value };
+  config.set('defaults', updated);
 }
 
-export function updateProfile(name: string, updates: Partial<ConnectionProfile>): boolean {
-  const profiles = config.get('profiles');
-  if (profiles[name]) {
-    profiles[name] = {
-      ...profiles[name],
-      ...updates,
-      name, // Ensure name cannot be changed
-      updatedAt: new Date().toISOString(),
-    };
-    config.set('profiles', profiles);
-    return true;
-  }
-  return false;
-}
-
-export function setActiveProfile(name: string | undefined): void {
-  if (name === undefined) {
-    config.delete('activeProfile');
-  } else {
-    config.set('activeProfile', name);
-  }
-}
-
-export function getActiveProfile(): string | undefined {
-  return config.get('activeProfile');
+export function unsetDefault(key: DefaultKey): void {
+  const current = getDefaults();
+  const updated = { ...current } as any;
+  delete updated[key];
+  // Restore hard defaults for required keys
+  if (key === 'image') updated.image = DEFAULT_IMAGE;
+  if (key === 'namespace') updated.namespace = DEFAULT_NAMESPACE;
+  config.set('defaults', updated);
 }
 
 export function clearConfig(): void {

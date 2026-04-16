@@ -1,11 +1,13 @@
 import * as fs from 'fs';
-import { connect, disconnect, getStatus, forceCleanup, getCurrentContext } from './connection';
+import { connect, getStatus, forceCleanup, getCurrentContext } from './connection';
 import { reporter } from './reporter';
 import { ServiceStatus } from './types';
 
 export interface WatchOptions {
-  profile?: string;
+  context?: string;
   namespace?: string;
+  image?: string;
+  kubeconfig?: string;
   checkIntervalMs?: number;
   maxConsecutiveFailures?: number;
 }
@@ -35,12 +37,8 @@ function isHealthy(status: ServiceStatus, lastLogSize: number): { healthy: boole
   const stat = fs.statSync(status.logFile);
   const newSize = stat.size;
 
-  if (newSize <= lastLogSize) {
-    // No new log content — assume healthy
-    return { healthy: true, newSize };
-  }
+  if (newSize <= lastLogSize) return { healthy: true, newSize };
 
-  // Read only the new portion of the log
   const fd = fs.openSync(status.logFile, 'r');
   const buf = Buffer.alloc(newSize - lastLogSize);
   fs.readSync(fd, buf, 0, buf.length, lastLogSize);
@@ -48,7 +46,6 @@ function isHealthy(status: ServiceStatus, lastLogSize: number): { healthy: boole
 
   const newContent = buf.toString('utf-8');
   const hasFatal = FATAL_PATTERNS.some((p) => p.test(newContent));
-
   return { healthy: !hasFatal, newSize };
 }
 
@@ -68,11 +65,14 @@ export async function watch(opts: WatchOptions): Promise<never> {
   let fails = 0;
   let lastLogSize = 0;
 
-  // Capture the starting context to detect external context changes
   const startContext = getCurrentContext();
 
-  // Initial connect
-  await connect({ profile: opts.profile, namespace: opts.namespace });
+  await connect({
+    context: opts.context,
+    namespace: opts.namespace,
+    image: opts.image,
+    kubeconfig: opts.kubeconfig,
+  });
   reporter.log('info', 'Watcher active — will auto-reconnect on drop (Ctrl+C to stop)');
 
   const status = getStatus();
@@ -84,59 +84,52 @@ export async function watch(opts: WatchOptions): Promise<never> {
   while (true) {
     await new Promise((r) => setTimeout(r, interval));
 
-    // Check if context changed externally
     const currentContext = getCurrentContext();
     if (startContext && currentContext !== startContext) {
       reporter.log('error',
-        `Context changed externally: "${startContext}" → "${currentContext}". ` +
-        'Watcher stopping to avoid connecting to wrong cluster.'
+        `Context changed externally: "${startContext}" → "${currentContext}". Watcher stopping.`
       );
       process.exit(1);
     }
 
     const currentStatus = getStatus();
 
-    // Check if process is alive
     if (currentStatus.running && currentStatus.pid && isProcessRunning(currentStatus.pid)) {
-      // Process alive — check log health
       const healthResult = isHealthy(currentStatus, lastLogSize);
       lastLogSize = healthResult.newSize;
-
       if (healthResult.healthy) {
         fails = 0;
         backoff = 1_000;
         continue;
       }
-
-      // Unhealthy — log has fatal errors
       reporter.log('warn', 'Detected fatal error in ktctl logs');
     }
 
-    // Connection lost or unhealthy
     fails++;
-
     if (fails >= maxFail) {
       reporter.log('error', `${maxFail} consecutive failures — giving up`);
       process.exit(1);
     }
 
-    reporter.log('warn', `Connection lost (failure ${fails}/${maxFail}), reconnecting in ${backoff / 1000}s`);
+    reporter.log('warn', `Connection lost (${fails}/${maxFail}), reconnecting in ${backoff / 1000}s`);
     await new Promise((r) => setTimeout(r, backoff));
     backoff = Math.min(backoff * 2, 60_000);
 
     try {
       await forceCleanup();
-      await connect({ profile: opts.profile, namespace: opts.namespace });
+      await connect({
+        context: opts.context,
+        namespace: opts.namespace,
+        image: opts.image,
+        kubeconfig: opts.kubeconfig,
+      });
       fails = 0;
       backoff = 1_000;
 
-      // Update log size for new connection
       const newStatus = getStatus();
-      if (newStatus.logFile && fs.existsSync(newStatus.logFile)) {
-        lastLogSize = fs.statSync(newStatus.logFile).size;
-      } else {
-        lastLogSize = 0;
-      }
+      lastLogSize = newStatus.logFile && fs.existsSync(newStatus.logFile)
+        ? fs.statSync(newStatus.logFile).size
+        : 0;
 
       reporter.log('success', 'Reconnected');
     } catch (err) {
