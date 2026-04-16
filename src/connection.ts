@@ -31,6 +31,18 @@ function getProcessInfo(): ProcessInfo | null {
 function saveProcessInfo(info: ProcessInfo): void {
   const pidFile = getPidFile();
   fs.writeFileSync(pidFile, JSON.stringify(info, null, 2));
+  // When running under sudo, chown the file back to the real user so
+  // non-sudo `ktcs` invocations can still read/update it.
+  const sudoUser = process.env.SUDO_USER;
+  if (sudoUser && process.getuid && process.getuid() === 0) {
+    const res = spawnSync('id', ['-u', sudoUser], { encoding: 'utf-8' });
+    const uid = parseInt((res.stdout ?? '').trim(), 10);
+    const gidRes = spawnSync('id', ['-g', sudoUser], { encoding: 'utf-8' });
+    const gid = parseInt((gidRes.stdout ?? '').trim(), 10);
+    if (!isNaN(uid) && !isNaN(gid)) {
+      try { fs.chownSync(pidFile, uid, gid); } catch { /* best-effort */ }
+    }
+  }
 }
 
 function clearProcessInfo(): void {
@@ -112,6 +124,7 @@ function findKtctlConnectPid(): number | null {
 export function getStatus(): ServiceStatus {
   const processInfo = getProcessInfo();
 
+  // Primary check: saved PID is alive and we can signal it
   if (processInfo && isProcessRunning(processInfo.pid)) {
     return {
       running: true,
@@ -123,12 +136,19 @@ export function getStatus(): ServiceStatus {
     };
   }
 
-  // Saved PID gone — ktctl may have forked. Look for any live ktctl connect process.
+  // Fallback: use pgrep. Covers two cases:
+  //   a) ktctl forked — saved PID is dead, worker has different PID
+  //   b) ktctl is owned by root but ktcs is running as non-root —
+  //      process.kill(pid, 0) throws EPERM so isProcessRunning returns false
+  //      even though the process exists
   const livePid = findKtctlConnectPid();
   if (livePid) {
-    if (processInfo && processInfo.pid !== livePid) {
-      // Reconcile: update the PID file to point at the actual running process
-      saveProcessInfo({ ...processInfo, pid: livePid });
+    if (processInfo) {
+      // We have saved metadata — reuse it. Try to reconcile the PID on disk
+      // if we're allowed to write (may silently fail when running without sudo).
+      if (processInfo.pid !== livePid) {
+        try { saveProcessInfo({ ...processInfo, pid: livePid }); } catch { /* read-only context */ }
+      }
       return {
         running: true,
         pid: livePid,
@@ -138,12 +158,14 @@ export function getStatus(): ServiceStatus {
         logFile: processInfo.logFile,
       };
     }
-    // No saved info but ktctl is running — orphaned process
+    // No saved info at all — truly orphaned (pre-ktcs startup or manual ktctl)
     return { running: true, pid: livePid };
   }
 
-  // Truly not running
-  if (processInfo) clearProcessInfo();
+  // Truly not running — clean up stale PID file if we can
+  if (processInfo) {
+    try { clearProcessInfo(); } catch { /* may fail without sudo if file is root-owned */ }
+  }
   return { running: false };
 }
 
