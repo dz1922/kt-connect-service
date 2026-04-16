@@ -1,6 +1,16 @@
 # kt-connect-service
 
-A kubectl-style CLI (`ktcs`) for managing [kt-connect](https://github.com/alibaba/kt-connect) tunnels. Runs ktctl as a background service, auto-downloads the binary, aligns with kubectl conventions, and supports auto-reconnect.
+[![npm version](https://img.shields.io/npm/v/kt-connect-service.svg?style=flat-square)](https://www.npmjs.com/package/kt-connect-service)
+[![npm downloads](https://img.shields.io/npm/dm/kt-connect-service.svg?style=flat-square)](https://www.npmjs.com/package/kt-connect-service)
+[![License](https://img.shields.io/npm/l/kt-connect-service.svg?style=flat-square)](https://github.com/dz1922/kt-connect-service/blob/main/LICENSE)
+[![Node](https://img.shields.io/node/v/kt-connect-service.svg?style=flat-square)](https://nodejs.org)
+
+> **`ktcs`** — a kubectl-style CLI for [kt-connect](https://github.com/alibaba/kt-connect). Run Kubernetes local-dev VPN tunnels with auto-reconnect, readiness probing, and transactional context switching.
+
+```bash
+npm install -g kt-connect-service
+sudo ktcs connect         # or: sudo ktcs switch <kubectl-context>
+```
 
 ## Features
 
