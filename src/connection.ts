@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn, execSync, spawnSync, ChildProcess } from 'child_process';
 import { getProfile, getLogDir, getPidFile, setActiveProfile, getActiveProfile, getKtctlPath } from './config';
-import { findKtctl } from './installer';
+import { findKtctl, ensureKtctl } from './installer';
 import { ServiceStatus, ConnectionProfile, ConnectOptions } from './types';
 import { reporter } from './reporter';
 
@@ -137,11 +137,8 @@ export async function connect(options: ConnectOptions = {}): Promise<void> {
     throw new Error(`Profile "${profileName}" not found. Use "ktcs profile list" to see available profiles.`);
   }
 
-  // Find ktctl binary
-  const ktctlPath = findKtctl();
-  if (!ktctlPath) {
-    throw new Error('ktctl not found. Please install it first using "ktcs install".');
-  }
+  // Find or auto-download ktctl binary
+  const ktctlPath = await ensureKtctl();
 
   // Build command arguments
   const args: string[] = ['connect'];
