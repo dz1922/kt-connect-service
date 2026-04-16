@@ -1,6 +1,6 @@
 {
   "name": "kt-connect-service",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "CLI tool for managing kt-connect connections with auto-reconnect",
   "main": "dist/index.js",
   "bin": {

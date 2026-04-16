@@ -1,34 +1,34 @@
-// Default values
 export const DEFAULT_IMAGE = 'registry.cn-hangzhou.aliyuncs.com/rdc-incubator/kt-connect-shadow';
 export const DEFAULT_NAMESPACE = 'default';
-export const DEFAULT_DESCRIPTION = 'default';
 
-export interface ConnectionProfile {
-  name: string;
+export interface Defaults {
   image: string;
-  namespace?: string;
+  namespace: string;
   kubeconfig?: string;
   extraArgs?: string[];
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ServiceStatus {
   running: boolean;
   pid?: number;
-  profile?: string;
+  context?: string;
   namespace?: string;
   startedAt?: string;
   logFile?: string;
 }
 
 export interface Config {
-  profiles: Record<string, ConnectionProfile>;
-  activeProfile?: string;
-  ktctlPath?: string;
+  defaults: Defaults;
   logDir: string;
   pidFile: string;
+  ktctlPath?: string;
+}
+
+export interface ConnectOptions {
+  context?: string;
+  namespace?: string;
+  image?: string;
+  kubeconfig?: string;
 }
 
 export interface InstallOptions {
@@ -36,10 +36,4 @@ export interface InstallOptions {
   installPath?: string;
   force?: boolean;
   mirror?: boolean;
-}
-
-export interface ConnectOptions {
-  profile?: string;
-  namespace?: string;
-  background?: boolean;
 }
