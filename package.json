@@ -1,6 +1,6 @@
 {
   "name": "kt-connect-service",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "CLI tool for managing kt-connect connections with auto-reconnect",
   "main": "dist/index.js",
   "bin": {
@@ -35,10 +35,24 @@
   },
   "keywords": [
     "kt-connect",
+    "ktctl",
+    "ktcs",
     "kubernetes",
+    "kubectl",
+    "k8s",
     "vpn",
+    "tunnel",
+    "cluster",
+    "cli",
+    "devtools",
+    "developer-tools",
+    "kubernetes-development",
+    "local-development",
+    "cloud-native",
     "background-service",
-    "cli"
+    "sudo",
+    "auto-reconnect",
+    "context-switch"
   ],
   "license": "GPL-3.0",
   "dependencies": {
