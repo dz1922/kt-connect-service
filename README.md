@@ -1,7 +1,8 @@
 # kt-connect-service
 
 [![npm version](https://img.shields.io/npm/v/kt-connect-service.svg?style=flat-square)](https://www.npmjs.com/package/kt-connect-service)
-[![npm downloads](https://img.shields.io/npm/dm/kt-connect-service.svg?style=flat-square)](https://www.npmjs.com/package/kt-connect-service)
+[![GitHub stars](https://img.shields.io/github/stars/dz1922/kt-connect-service?style=flat-square)](https://github.com/dz1922/kt-connect-service/stargazers)
+[![Last release](https://img.shields.io/github/release-date/dz1922/kt-connect-service?style=flat-square)](https://github.com/dz1922/kt-connect-service/releases)
 [![License](https://img.shields.io/npm/l/kt-connect-service.svg?style=flat-square)](https://github.com/dz1922/kt-connect-service/blob/main/LICENSE)
 [![Node](https://img.shields.io/node/v/kt-connect-service.svg?style=flat-square)](https://nodejs.org)
 
